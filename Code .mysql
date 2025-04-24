@@ -1,0 +1,196 @@
+-- Create a merged view of sales and joined tables
+CREATE VIEW merged_data AS
+SELECT 
+    s.`Order ID`,
+    s.Date AS Date,
+    s.Status,
+    s.Fulfilment,
+    s.`Sales Channel`,
+    s.`ship-service-level`,
+    s.Style,
+    s.SKU,
+    s.Category,
+    s.Size,
+    s.ASIN,
+    s.`Courier Status`,
+    s.Qty,
+    s.currency,
+    s.Amount,
+    s.`ship-city`,
+    s.`ship-state`,
+    s.`ship-postal-code`,
+    s.`ship-country`,
+    s.`promotion-ids`,
+    j.Date AS Stock_Date,
+    j.stock,
+    j.category AS Stock_Category
+FROM 
+    sales s
+LEFT JOIN 
+    orders j
+ON 
+    s.`Order ID`= j.`Order ID`;
+
+/* Cancellation Rate by Category*/
+SELECT 
+    Category,
+    COUNT(CASE WHEN Status = 'Cancelled' THEN 1 END) AS Cancelled_Orders,
+    COUNT(*) AS Total_Orders,
+    (COUNT(CASE WHEN Status = 'Cancelled' THEN 1 END) * 100.0 / COUNT(*)) AS Cancellation_Rate
+FROM 
+    merged_data
+GROUP BY 
+    Category
+ORDER BY 
+    Total_orders DESC;
+    
+/*Order cancellation according to the size and category */
+SELECT 
+    Category,
+    Size,
+    COUNT(CASE WHEN Status = 'Cancelled' THEN 1 END) AS Cancelled_Orders,
+    COUNT(*) AS Total_Orders,
+    (COUNT(CASE WHEN Status = 'Cancelled' THEN 1 END) * 100.0 / COUNT(*)) AS Cancellation_Rate
+FROM 
+    merged_data
+GROUP BY 
+    Category, Size
+ORDER BY 
+    Total_orders DESC;
+    
+/*--identifying which state prefer which shipment*/
+SELECT 
+    `ship-city` AS State,
+    `ship-service-level` AS Shipping_Method,
+    COUNT(*) AS Total_Orders,
+    ROUND((COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (PARTITION BY `ship-state`)), 2) AS Percentage_of_Orders
+FROM 
+    merged_data
+GROUP BY 
+    `ship-state`, `ship-service-level`
+ORDER BY 
+    `ship-state`, Percentage_of_Orders DESC;
+
+/*Combine Shipping Methods with Order Cancellations*/
+SELECT 
+    `ship-state` AS State,
+    `ship-service-level` AS Shipping_Method,
+    COUNT(CASE WHEN Status = 'Cancelled' THEN 1 END) AS Cancelled_Orders,
+    COUNT(*) AS Total_Orders,
+    ROUND((COUNT(CASE WHEN Status = 'Cancelled' THEN 1 END) * 100.0 / COUNT(*)), 2) AS Cancellation_Rate
+FROM 
+    merged_data
+where `ship-service-level`= "standard"
+GROUP BY 
+    `ship-service-level`, `ship-state`
+ORDER BY 
+    total_orders DESC;
+    
+/*categorising according to shipment level expieted */
+SELECT 
+    `ship-state` AS State,
+    `ship-service-level` AS Shipping_Method,
+    COUNT(CASE WHEN Status = 'Cancelled' THEN 1 END) AS Cancelled_Orders,
+    COUNT(*) AS Total_Orders,
+    ROUND((COUNT(CASE WHEN Status = 'Cancelled' THEN 1 END) * 100.0 / COUNT(*)), 2) AS Cancellation_Rate
+FROM 
+    merged_data
+GROUP BY 
+    `ship-service-level`, `ship-state`
+ORDER BY 
+    total_orders DESC;
+
+    
+/*Cancellation Rate by Fulfillment Method*/
+SELECT 
+    `ship-service-level`,`ship-state`,size,Category,
+    COUNT(CASE WHEN Status = 'Cancelled' THEN 1 END) AS Cancelled_Orders,
+    COUNT(*) AS Total_Orders,
+    (COUNT(CASE WHEN Status = 'Cancelled' THEN 1 END) * 100.0 / COUNT(*)) AS Cancellation_Rate
+FROM 
+    merged_data
+where 
+ `ship-service-level` = "standard"
+GROUP BY   `ship-service-level`, `ship-state`,size,Category
+ORDER BY 
+    total_orders DESC;
+    
+/* Geographic Trends
+1. Cancellations by State*/
+SELECT 
+    `ship-state`,
+    COUNT(CASE WHEN Status = 'Cancelled' THEN 1 END) AS Cancelled_Orders,
+    COUNT(*) AS Total_Orders,
+    (COUNT(CASE WHEN Status = 'Cancelled' THEN 1 END) * 100.0 / COUNT(*)) AS Cancellation_Rate
+FROM 
+    merged_data
+GROUP BY 
+    `ship-state`
+ORDER BY 
+    total_orders DESC
+limit 5;
+
+/* Cancellations by City*/
+SELECT 
+   `ship-city`,
+    COUNT(CASE WHEN Status = 'Cancelled' THEN 1 END) AS Cancelled_Orders,
+    COUNT(*) AS Total_Orders,
+    (COUNT(CASE WHEN Status = 'Cancelled' THEN 1 END) * 100.0 / COUNT(*)) AS Cancellation_Rate
+FROM 
+    merged_data
+GROUP BY 
+    `ship-city`
+ORDER BY 
+    Total_orders DESC 
+    limit 5;
+    
+/*Combining,state,category,size*/
+SELECT 
+    `ship-state` AS Region,`ship-city` as city,
+    Category,Size,
+    COUNT(CASE WHEN Status = 'Cancelled' THEN 1 END) AS Cancelled_Orders,
+    COUNT(*) AS Total_Orders,
+    (COUNT(CASE WHEN Status = 'Cancelled' THEN 1 END) * 100.0 / COUNT(*)) AS Cancellation_Rate
+FROM 
+    merged_data
+GROUP BY 
+    `ship-state`, Category,Size,`ship-city`
+ORDER BY 
+    Total_orders DESC
+limit 10;
+
+
+/*Price varying on kurta */    
+SELECT 
+    Category,
+    CASE 
+        WHEN Amount < 100 THEN 'Low Price (<500)'
+        WHEN Amount BETWEEN 100 AND 500 THEN 'Medium Price (500-1000)'
+        WHEN Amount > 500 THEN 'High Price (>1000)'
+    END AS Price_Band,
+    COUNT(CASE WHEN Status = 'Cancelled' THEN 1 END) AS Cancelled_Orders,
+    COUNT(*) AS Total_Orders,
+    ROUND((COUNT(CASE WHEN Status = 'Cancelled' THEN 1 END) * 100.0 / COUNT(*)), 2) AS Cancellation_Rate
+FROM 
+    merged_data
+    WHERE 
+    Category IN ('Kurta', 'Set')
+GROUP BY 
+    Category, 
+    CASE 
+        WHEN Amount < 100 THEN 'Low Price (<500)'
+        WHEN Amount BETWEEN 100 AND 500 THEN 'Medium Price (500-1000)'
+        WHEN Amount > 500 THEN 'High Price (>1000)'
+    END
+ORDER BY 
+    TOTAL_orders DESC;
+
+
+
+SELECT 
+   `ship-state`,
+    round(sum(amount),2) AS Sum_Of_Sales , category
+FROM merged_data
+where Status = "cancelled"
+GROUP BY 1 , 3
+order by 2 desc;
